@@ -1,5 +1,7 @@
 # VectorCraft Roadmap
 
+- Personal desktop cloud projects: automatic durable native checkpoints, WebDAV retry and downloaded revision/conflict opening; [scope and validation](docs/cloud-sync.md). Native-only; parity scores unchanged, live two-device validation pending.
+
 - PDF.R1: editable PDF import uses the shared reader, scans page content in windows, and rejects known incomplete input before returning a document.
 - PDF.W1: PDF export and print composition use the shared optional writer for configuration, metadata, font preparation and guarded finalization; drawing and output policy remain app-owned.
 

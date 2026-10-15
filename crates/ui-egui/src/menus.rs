@@ -52,6 +52,10 @@ use Item::Sep;
 
 /// UI-level commands: (id, label, shortcut, params doc).
 pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
+    #[cfg(not(target_arch = "wasm32"))]
+    ("file.cloudProjects", "Cloud Projects…", "", "{} open personal cloud projects and connection settings"),
+    #[cfg(not(target_arch = "wasm32"))]
+    ("file.cloudOpen", "Open Cloud Project", "", "{version?: string, localToken?: string} open a verified downloaded revision or local checkpoint"),
     (
         "app.language",
         "Interface Language",
@@ -968,6 +972,13 @@ pub fn run_ui_command(app: &mut VectorcraftApp, id: &str, p: &Value) -> Option<R
         Ok(json!(*b))
     };
     let r = match id {
+        #[cfg(not(target_arch = "wasm32"))]
+        "file.cloudProjects" => {
+            app.cloud_sync.visible = true;
+            Ok(Value::Null)
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        "file.cloudOpen" => crate::cloud_sync::open_command(&mut app.cloud_sync, p),
         "file.newDialog" => {
             crate::dialogs::open_new_document(app);
             Ok(Value::Null)
@@ -2087,6 +2098,8 @@ pub fn menu_tree_named(english_names: bool) -> Vec<(&'static str, Vec<Item>)> {
                 c("New…", "file.newDialog"),
                 c("New from Template…", "file.newFromTemplate"),
                 c("Open…", "file.open"),
+                #[cfg(not(target_arch = "wasm32"))]
+                c("Cloud Projects…", "file.cloudProjects"),
                 sub("Open Recent Files", {
                     let mut v: Vec<Item> = RECENT_IDS.iter().map(|id| c("Recent File", id)).collect();
                     v.push(Sep);

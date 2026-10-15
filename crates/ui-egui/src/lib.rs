@@ -18,6 +18,8 @@ mod brand;
 pub mod canvas;
 pub mod chrome;
 mod clipboard_probe;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod cloud_sync;
 pub mod community;
 pub mod control;
 pub mod credits;
@@ -418,6 +420,8 @@ pub struct VectorcraftApp {
     pub opening: opening::Opening,
     /// Data Recovery's timer and startup question ([`recovery`]).
     pub recovery: recovery::Timer,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub cloud_sync: cloud_sync::CloudSync,
     /// Modifiers the keyboard holds (from the host's input), given back after synthetic input.
     host_modifiers: egui::Modifiers,
     /// Synthetic input set the modifiers egui holds (see [`Self::raw_input_hook`]).
@@ -518,6 +522,8 @@ impl VectorcraftApp {
             background: Default::default(),
             opening: Default::default(),
             recovery: Default::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            cloud_sync: Default::default(),
             host_modifiers: Default::default(),
             synthetic_modifiers: false,
             ime_marked: None,
@@ -1102,7 +1108,15 @@ impl VectorcraftApp {
         // The window's close button (or the system quitting the app) asks about unsaved documents,
         // once the saves running in the background are done. Not while a file dialog's sheet is on
         // the window: what asked for it runs again when it answers.
-        if ctx.input(|i| i.viewport().close_requested()) {
+        let close_requested = ctx.input(|i| i.viewport().close_requested());
+        #[cfg(not(target_arch = "wasm32"))]
+        let close_requested = if close_requested && !cloud_sync::prepare_close(self) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            false
+        } else {
+            close_requested
+        };
+        if close_requested {
             background::wait_all(self);
             if self.file_sheet_open() {
                 ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
@@ -1121,6 +1135,8 @@ impl VectorcraftApp {
             // The timer and heartbeat run in an idle window too.
             ctx.request_repaint_after(std::time::Duration::from_secs_f64(wait));
         }
+        #[cfg(not(target_arch = "wasm32"))]
+        cloud_sync::frame(self, ctx, now);
         shortcut_editor::sync(&self.ui);
         prefs_dialog::apply_runtime(self, ctx);
         // The OS title bar (and the taskbar / Alt-Tab entry) follows the active file; with the

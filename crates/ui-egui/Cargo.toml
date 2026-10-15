@@ -33,6 +33,11 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }
 
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+craft-cloud-sync = { path = "../../../photocraft_cloudsync/cloud-sync" }
+sha2 = "0.10"
+uuid = { version = "1", features = ["v4"] }
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 # `now_ms` (src/lib.rs) reads the page's `performance.now()` with this crate in the web build. It is
 # MIT OR Apache-2.0 and already in the build through eframe.

@@ -41,6 +41,10 @@ pub fn close_all(app: &mut VectorcraftApp, then: &str) -> Result<Value, String> 
         return ask(app, i, then);
     }
     if then == "quit" {
+        #[cfg(not(target_arch = "wasm32"))]
+        if !crate::cloud_sync::prepare_close(app) {
+            return Ok(json!({"pending":"cloudCheckpoint"}));
+        }
         // Nothing unsaved is left: no recovery copies either.
         vectorcraft_engine::cmd::recovery::forget_all(&mut app.session);
         // The host closes the window.
@@ -50,6 +54,8 @@ pub fn close_all(app: &mut VectorcraftApp, then: &str) -> Result<Value, String> 
     if app.session.documents().is_empty() {
         return Ok(json!({ "closed": 0 }));
     }
+    #[cfg(not(target_arch = "wasm32"))]
+    crate::cloud_sync::checkpoint_all(app);
     let r = app.session.execute("file.closeAll", &json!({})).map_err(|e| e.to_string());
     app.sync_views();
     r
@@ -71,6 +77,8 @@ fn ask(app: &mut VectorcraftApp, i: usize, then: &str) -> Result<Value, String> 
 
 /// Close document `i` through the engine command, keeping `views` aligned with the documents.
 fn close_now(app: &mut VectorcraftApp, i: usize) -> Result<Value, String> {
+    #[cfg(not(target_arch = "wasm32"))]
+    crate::cloud_sync::checkpoint_document(app, i);
     let r = app.session.execute("file.close", &json!({ "index": i })).map_err(|e| e.to_string())?;
     if i < app.views.len() {
         app.views.remove(i);

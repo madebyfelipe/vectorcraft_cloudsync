@@ -139,3 +139,5 @@ After placed documents (File â€º Place of a `.vectorcraft` file, linked), M4.14â
 | 2026-10-10 | minor | M9 row from main: initial Revolve |
 | 2026-10-10 | minor | Added the Alpha gate table (core-workflow gate): all six workflows work end to end, `.ai` exchange partial but not blocking; stage stays alpha |
 | 2026-10-10 | major | Created from ROADMAP.md's milestone table and "Where we're going"; added Current focus and the beta list |
+
+Personal desktop cloud projects (2026-10-15): [native checkpoint, offline retry and conflict-revision scope](cloud-sync.md). Separate from Adobe cloud integrations and local Libraries; scores unchanged. Live dedicated-account two-device validation remains pending.

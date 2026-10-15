@@ -677,3 +677,5 @@ Moved from the ROADMAP's "Shipped so far" on 2026-10-10. Update it when a featur
 | 2026-10-10 | major | Full re-measure against Illustrator 2026 30.x from code counts, open issues and public docs; added breadth/depth/ready-for-real-work numbers, generative-AI row, calibration from PR timestamps; merged the ROADMAP's parity estimate, honest assessment and "Shipped so far" into this file |
 | 2026-10-05 | major | (in ROADMAP.md) M3 and M4 rows re-derived after the paint and files milestones |
 | 2026-10-02 | major | (in ROADMAP.md) First 22-area weighted estimate |
+
+Personal desktop cloud projects (2026-10-15): [native checkpoint, offline retry and conflict-revision scope](cloud-sync.md). Separate from Adobe cloud integrations and local Libraries; scores unchanged. Live dedicated-account two-device validation remains pending.
