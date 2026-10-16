@@ -126,6 +126,32 @@ fn cache() -> Result<PathBuf, String> {
     };
     base.map(|p| p.join("vectorcraft/cloud-sync")).ok_or_else(|| "Cannot find the local cloud project folder".into())
 }
+/// A cloud open waiting for its revision payload to download.
+type AwaitingOpen = (OpenSource, vectorcraft_engine::file_access::ScopeHandle);
+fn take_waiting(waiting: &mut Vec<AwaitingOpen>, version: uuid::Uuid) -> Vec<AwaitingOpen> {
+    let (done, rest) = std::mem::take(waiting).into_iter().partition(|(source, _)| matches!(source, OpenSource::Cloud(r) if r.version_id == version));
+    *waiting = rest;
+    done
+}
+fn read_source(revision: &OpenSource, scope: vectorcraft_engine::file_access::ScopeHandle) -> Result<Box<ReadFile>, String> {
+    scope
+        .run(|| {
+            vectorcraft_engine::guard::catch_panic(|| {
+                let (path, title) = match revision {
+                    OpenSource::Cloud(r) => (&r.local_path, &r.title),
+                    OpenSource::Local(r) => (&r.path, &r.title),
+                };
+                vectorcraft_engine::file_access::check_read(&path.to_string_lossy())?;
+                std::fs::read(path).map_err(|e| e.to_string()).and_then(|bytes| {
+                    without_source_reads(|| {
+                        fileio::read_for_open(&format!("{}.vectorcraft", title), &bytes, None, &json!({}), false).map_err(|e| e.to_string())
+                    })
+                })
+            })
+        })
+        .unwrap_or_else(|e| Err(format!("Cloud project could not open: {e}")))
+        .map(Box::new)
+}
 fn launch(cloud: &mut CloudSync) {
     let (tx, work) = mpsc::channel();
     let (done, rx) = mpsc::channel();
@@ -173,6 +199,7 @@ fn launch(cloud: &mut CloudSync) {
             }
         }
         let mut drafts = BTreeMap::new();
+        let mut waiting: Vec<AwaitingOpen> = Vec::new();
         let mut retried: Option<std::time::Instant> = None;
         if let Ok(path) = cache()
             && let Ok(entries) = std::fs::read_dir(path.join("local-checkpoints"))
@@ -190,6 +217,9 @@ fn launch(cloud: &mut CloudSync) {
         loop {
             match work.recv_timeout(Duration::from_millis(250)) {
                 Ok(Work::Connect(config)) => {
+                    for (revision, _) in waiting.drain(..) {
+                        let _ = done.send(Done::Opened(revision, Err("Cloud download interrupted by reconnecting; open the project again".into())));
+                    }
                     let account = Account::from(&config);
                     let password = config.password.clone();
                     match replace_service(&mut service, config) {
@@ -229,7 +259,14 @@ fn launch(cloud: &mut CloudSync) {
                             service
                                 .as_ref()
                                 .ok_or("Cloud outbox is unavailable; local checkpoints remain available")?
-                                .submit(Snapshot { local_key: key, title, extension: "vectorcraft".into(), local_token: draft.token.clone(), native })
+                                .submit(Snapshot {
+                                    local_key: key,
+                                    title,
+                                    extension: "vectorcraft".into(),
+                                    local_token: draft.token.clone(),
+                                    native,
+                                    preview: None,
+                                })
                                 .map(|_| ())
                                 .map_err(|e| e.to_string())
                         });
@@ -246,26 +283,20 @@ fn launch(cloud: &mut CloudSync) {
                     .unwrap_or_else(|e| Err(format!("Cloud checkpoint failed: {e}")));
                     let _ = done.send(Done::Captured(uid, doc, result));
                 }
-                Ok(Work::Open(revision, scope)) => {
-                    let result = scope
-                        .run(|| {
-                            vectorcraft_engine::guard::catch_panic(|| {
-                                let (path, title) = match &revision {
-                                    OpenSource::Cloud(r) => (&r.local_path, &r.title),
-                                    OpenSource::Local(r) => (&r.path, &r.title),
-                                };
-                                vectorcraft_engine::file_access::check_read(&path.to_string_lossy())?;
-                                std::fs::read(path).map_err(|e| e.to_string()).and_then(|bytes| {
-                                    without_source_reads(|| {
-                                        fileio::read_for_open(&format!("{}.vectorcraft", title), &bytes, None, &json!({}), false)
-                                            .map_err(|e| e.to_string())
-                                    })
-                                })
-                            })
-                        })
-                        .unwrap_or_else(|e| Err(format!("Cloud project could not open: {e}")));
-                    let _ = done.send(Done::Opened(revision, result.map(Box::new)));
-                }
+                Ok(Work::Open(revision, scope)) => match (&revision, service.as_ref()) {
+                    (OpenSource::Cloud(r), Some(sync)) => {
+                        // Payloads download on demand: request it and finish the open when the sync service reports it fetched.
+                        sync.request_payload(r.version_id);
+                        waiting.push((revision, scope));
+                    }
+                    (OpenSource::Cloud(_), None) => {
+                        let _ = done.send(Done::Opened(revision, Err("Cloud outbox is unavailable".into())));
+                    }
+                    (OpenSource::Local(_), _) => {
+                        let result = read_source(&revision, scope);
+                        let _ = done.send(Done::Opened(revision, result));
+                    }
+                },
                 Ok(Work::Bind { key, revision }) => {
                     if let Err(e) = service
                         .as_ref()
@@ -298,6 +329,22 @@ fn launch(cloud: &mut CloudSync) {
                 status: SyncStatus::Error("Cloud outbox is unavailable. Local checkpoints keep saving.".into()),
                 ..Default::default()
             });
+            for event in &state.events {
+                match event {
+                    SyncEvent::Fetched { version_id, .. } => {
+                        for (revision, scope) in take_waiting(&mut waiting, *version_id) {
+                            let result = read_source(&revision, scope);
+                            let _ = done.send(Done::Opened(revision, result));
+                        }
+                    }
+                    SyncEvent::FetchFailed { version_id, error } => {
+                        for (revision, _) in take_waiting(&mut waiting, *version_id) {
+                            let _ = done.send(Done::Opened(revision, Err(format!("Cannot download the cloud project: {error}"))));
+                        }
+                    }
+                    _ => {}
+                }
+            }
             if done.send(Done::State(state)).is_err() {
                 break;
             }
@@ -755,6 +802,36 @@ mod tests {
         std::fs::remove_dir_all(folder).unwrap();
     }
     #[test]
+    fn cloud_open_waits_for_its_payload_and_reads_the_fetched_file() {
+        use vectorcraft_engine::file_access::ScopeHandle;
+        let folder = std::env::temp_dir().join(format!("vector-cloud-lazy-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let revision = |version: u128| DownloadedRevision {
+            project_id: uuid::Uuid::from_u128(1),
+            version_id: uuid::Uuid::from_u128(version),
+            parents: Vec::new(),
+            heads: Vec::new(),
+            title: "Doc".into(),
+            extension: "vectorcraft".into(),
+            local_path: folder.join(format!("payload-{version}")),
+            created_ms: None,
+            size: 0,
+            preview_path: None,
+            cached: false,
+            pending: false,
+        };
+        let mut waiting: Vec<AwaitingOpen> =
+            vec![(OpenSource::Cloud(revision(1)), ScopeHandle::capture()), (OpenSource::Cloud(revision(2)), ScopeHandle::capture())];
+        assert_eq!(take_waiting(&mut waiting, uuid::Uuid::from_u128(1)).len(), 1);
+        assert_eq!(waiting.len(), 1);
+        assert!(take_waiting(&mut waiting, uuid::Uuid::from_u128(9)).is_empty());
+        // Before the payload arrives the file is absent: an error, never a panic.
+        assert!(read_source(&OpenSource::Cloud(revision(2)), ScopeHandle::capture()).is_err());
+        std::fs::write(folder.join("payload-2"), encode_native(&Document::new(100.0, 80.0)).unwrap()).unwrap();
+        assert!(read_source(&OpenSource::Cloud(revision(2)), ScopeHandle::capture()).is_ok());
+        std::fs::remove_dir_all(folder).unwrap();
+    }
+    #[test]
     fn automatic_capture_never_reads_original_paths_from_preview_only_placed_links() {
         let _session = vectorcraft_engine::Session::new();
         let folder = std::env::temp_dir().join(format!("vector-cloud-link-{}", uuid::Uuid::new_v4()));
@@ -961,6 +1038,7 @@ fn retry_draft(service: &SyncService, draft: &mut LocalDraft) -> Result<(), Stri
             extension: "vectorcraft".into(),
             local_token: draft.token.clone(),
             native,
+            preview: None,
         })
         .map_err(|e| e.to_string())?;
     draft.needs_submit = false;
@@ -1012,7 +1090,7 @@ fn connect_config(cloud: &mut CloudSync, config: Config) -> Result<(), String> {
     cloud.network_error = None;
     Ok(())
 }
-/// Open only a revision already verified in the managed cache.
+/// Open a catalog revision (its payload downloads on demand) or a local checkpoint.
 pub fn open_command(cloud: &mut CloudSync, params: &serde_json::Value) -> Result<serde_json::Value, String> {
     let source = if let Some(version) = params.get("version").and_then(serde_json::Value::as_str) {
         let id = uuid::Uuid::parse_str(version).map_err(|_| "invalid revision id")?;
