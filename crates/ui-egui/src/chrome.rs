@@ -505,8 +505,13 @@ pub fn status_bar(app: &mut VectorcraftApp, ui: &mut Ui) {
         .show(ui, |ui| {
             ui.horizontal_centered(|ui| {
                 #[cfg(not(target_arch = "wasm32"))]
-                if ui.small_button(app.cloud_sync.label()).clicked() {
-                    app.cloud_sync.visible = true;
+                {
+                    if ui.small_button(app.cloud_sync.label()).clicked() {
+                        app.cloud_sync.visible = true;
+                    }
+                    if ui.small_button("Home").on_hover_text("Show the projects library").clicked() {
+                        app.run("app.home", json!({})).ok();
+                    }
                 }
                 let zoom = app.view().map(|v| v.zoom).unwrap_or(1.0);
                 egui::ComboBox::from_id_salt("zoom-combo").selected_text(egui::RichText::new(zoom_label(zoom)).size(11.5)).width(76.0).show_ui(

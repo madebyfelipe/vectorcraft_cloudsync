@@ -264,4 +264,4 @@ re-measure of the panels added since. Slider rails show on Medium Dark (#1808, #
 | 2026-10-11 | minor | Direct Selection: dragging a path selected whole by an anchor moves it whole; Alt-drag copies by an anchor too, toggles during the drag and snaps onto the original (#1104); score unchanged (estimated) |
 | 2026-10-10 | major | First checklist, built from the tool sources and tests against Illustrator 2026's public documentation |
 
-Personal desktop cloud projects (2026-10-15): [native checkpoint, offline retry and conflict-revision scope](cloud-sync.md). Separate from Adobe cloud integrations and local Libraries; scores unchanged. Live dedicated-account two-device validation remains pending.
+Personal desktop cloud projects (2026-10-15): [native checkpoint, offline retry, conflict-revision scope and the Home projects library](cloud-sync.md). Separate from Adobe cloud integrations and local Libraries; scores unchanged. Live dedicated-account two-device validation remains pending.

@@ -29,7 +29,30 @@ pub fn close(app: &mut VectorcraftApp, i: usize) -> Result<Value, String> {
     // A save still running decides whether there is anything left to save.
     crate::background::wait_all(app);
     let dirty = app.session.documents().get(i).ok_or("no such document")?.is_dirty();
-    if dirty { ask(app, i, "close") } else { close_now(app, i) }
+    if !dirty {
+        return close_now(app, i);
+    }
+    // A document of Home's (no file; made there or opened from the cloud) whose latest revision is in
+    // its local checkpoint has nothing to save: it closes without the question. One whose checkpoint is
+    // still on its way closes when it lands, and asks only if it cannot be made.
+    #[cfg(not(target_arch = "wasm32"))]
+    match crate::cloud_sync::close_decision(app, i) {
+        crate::cloud_sync::CloseDecision::Close => return close_now(app, i),
+        crate::cloud_sync::CloseDecision::Wait => return Ok(json!({"pending":"cloudCheckpoint"})),
+        crate::cloud_sync::CloseDecision::Ask => {}
+    }
+    ask(app, i, "close")
+}
+
+/// Does this document need the Save / Don't Save / Cancel question when it closes? Modified, and not
+/// already safe in its cloud checkpoint ([`crate::cloud_sync::covers`]).
+fn needs_question(app: &VectorcraftApp, d: &vectorcraft_engine::DocState) -> bool {
+    #[cfg(not(target_arch = "wasm32"))]
+    if crate::cloud_sync::covers(app, d) {
+        return false;
+    }
+    let _ = app;
+    d.is_dirty()
 }
 
 /// File → Close All (`then` = `closeAll`) or Quit (`quit`): ask about the next modified document,
@@ -37,7 +60,12 @@ pub fn close(app: &mut VectorcraftApp, i: usize) -> Result<Value, String> {
 pub fn close_all(app: &mut VectorcraftApp, then: &str) -> Result<Value, String> {
     refuse_while_picking(app)?;
     crate::background::wait_all(app);
-    if let Some(i) = app.session.documents().iter().position(|d| d.is_dirty()) {
+    // Documents of Home's still saving their checkpoint are waited for first.
+    #[cfg(not(target_arch = "wasm32"))]
+    if crate::cloud_sync::hold_close_all(app, then) {
+        return Ok(json!({"pending":"cloudCheckpoint"}));
+    }
+    if let Some(i) = app.session.documents().iter().position(|d| needs_question(app, d)) {
         return ask(app, i, then);
     }
     if then == "quit" {
@@ -63,11 +91,11 @@ pub fn close_all(app: &mut VectorcraftApp, then: &str) -> Result<Value, String> 
 
 /// Is any open document modified (the window's close button must ask first)?
 pub fn any_dirty(app: &VectorcraftApp) -> bool {
-    app.session.documents().iter().any(|d| d.is_dirty())
+    app.session.documents().iter().any(|d| needs_question(app, d))
 }
 
 /// Show document `i` and ask whether to save it.
-fn ask(app: &mut VectorcraftApp, i: usize, then: &str) -> Result<Value, String> {
+pub(crate) fn ask(app: &mut VectorcraftApp, i: usize, then: &str) -> Result<Value, String> {
     app.session.set_active(i);
     let doc = &app.session.documents()[i];
     let (name, uid) = (doc.title(), doc.uid);
@@ -76,7 +104,7 @@ fn ask(app: &mut VectorcraftApp, i: usize, then: &str) -> Result<Value, String> 
 }
 
 /// Close document `i` through the engine command, keeping `views` aligned with the documents.
-fn close_now(app: &mut VectorcraftApp, i: usize) -> Result<Value, String> {
+pub(crate) fn close_now(app: &mut VectorcraftApp, i: usize) -> Result<Value, String> {
     #[cfg(not(target_arch = "wasm32"))]
     crate::cloud_sync::checkpoint_document(app, i);
     let r = app.session.execute("file.close", &json!({ "index": i })).map_err(|e| e.to_string())?;

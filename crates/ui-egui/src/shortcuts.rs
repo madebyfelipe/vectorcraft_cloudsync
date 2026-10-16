@@ -226,6 +226,9 @@ pub fn handle(app: &mut VectorcraftApp, ctx: &egui::Context) {
         }
         return;
     }
+    // The Home library owns Ctrl/Cmd+F, F2, Enter and Esc while it is up.
+    #[cfg(not(target_arch = "wasm32"))]
+    crate::cloud_home::consume_keys(app, ctx);
     let typing = ctx.egui_wants_keyboard_input();
     // Escape closes Edit Toolbar's drawer first (egui drops a drag from it on Escape already).
     if app.ui.tools_drawer && !typing && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {

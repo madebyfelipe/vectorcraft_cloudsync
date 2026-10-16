@@ -8,6 +8,6 @@ O adaptador nativo está em `crates/ui-egui/src/cloud_sync.rs`. A versão web n�
 
 Guia de clone, build e conexão local: [PhotoCraft Cloud Sync](https://github.com/madebyfelipe/photocraft_cloudsync/blob/main/cloud-sync/README.md).
 
-## TODO — tela inicial estilo Figma (HOME-01)
+## Tela inicial estilo Figma (HOME-01)
 
-Solicitado em 2026-10-15, pendente de implementação: biblioteca inicial com todos os projetos/posts da conta, cards e prévias, busca, recentes e criação/abertura diretamente pela nuvem. Salvamento automático sem exigir arquivos manuais no PC; downloads sob demanda e cache local limitado, preservando edições offline, uploads pendentes e conflitos. Exportação/cópia local por ação explícita. Escopo e critérios de aceite compartilhados: [HOME-01](https://github.com/madebyfelipe/photocraft_cloudsync/blob/main/docs/cloud-sync/TASKS.md#home-01--tela-inicial-de-projetos-na-nuvem). Não incluído no release Windows atual.
+Implementada em 2026-10-15 (fase B2): biblioteca inicial (`crates/ui-egui/src/cloud_home.rs`, `cloud_home_ui.rs`, `cloud_preview.rs`) com todos os projetos da conta, cards com prévia, nome, última edição e estado da sincronização, busca, ordenação, filtros, recentes e criação, abertura, renomeação e "Salvar uma cópia…" diretamente pela biblioteca. O salvamento automático continua sem arquivos manuais no PC; o limite do cache local (512 MiB a 10 GiB, padrão 2 GiB) fica em **Conta**. Veja [`../cloud-sync.md`](../cloud-sync.md). Escopo e critérios de aceite compartilhados: [HOME-01](https://github.com/madebyfelipe/photocraft_cloudsync/blob/main/docs/cloud-sync/TASKS.md#home-01--tela-inicial-de-projetos-na-nuvem). Pendente: validação de ponta a ponta com dois computadores e Windows/macOS.

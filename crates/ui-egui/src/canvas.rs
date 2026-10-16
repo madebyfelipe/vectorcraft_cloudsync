@@ -2020,26 +2020,42 @@ fn draw_overlays(p: &egui::Painter, xf: &Xf, overlays: &[Overlay], t: &Tokens, l
     }
 }
 
-/// The Home screen (`app.home`; with no document open, unless its preference is off).
+/// The Home screen (`app.home`; with no document open, unless its preference is off). On the desktop
+/// it is the projects library ([`crate::cloud_home_ui`]), with this screen's file and preset shortcuts
+/// under it ([`home_local`]); on the web, the file and preset shortcuts alone.
 fn home(app: &mut VectorcraftApp, ui: &mut Ui, rect: egui::Rect) {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        crate::cloud_home_ui::show(app, ui, rect);
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        let t = Tokens::get(ui.ctx());
+        ui.painter().rect_filled(rect, 0.0, t.panel_darker);
+        let inner = rect.shrink2(vec2((rect.width() - 820.0).max(40.0) / 2.0, 60.0));
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::top_down(egui::Align::Min)));
+        let ui = &mut child;
+        ui.label(egui::RichText::new(tl!("Welcome to VectorCraft")).font(theme::semibold(26.0)).color(t.text));
+        ui.add_space(4.0);
+        ui.label(egui::RichText::new(tl!("Vector illustration — fast, open, scriptable.")).size(14.0).color(t.text_dim));
+        ui.add_space(22.0);
+        ui.horizontal(|ui| {
+            if widgets::primary_button(ui, tl!("New file")).clicked() {
+                app.run("file.newDialog", json!({})).ok();
+            }
+            ui.add_space(8.0);
+            if widgets::secondary_button(ui, tl!("Open")).clicked() {
+                app.run("file.open", json!({})).ok();
+            }
+        });
+        home_local(app, ui);
+    }
+}
+
+/// The Home screen's shortcuts to files and presets: Recent Files, a few New Document presets and the
+/// community links.
+pub(crate) fn home_local(app: &mut VectorcraftApp, ui: &mut Ui) {
     let t = Tokens::get(ui.ctx());
-    ui.painter().rect_filled(rect, 0.0, t.panel_darker);
-    let inner = rect.shrink2(vec2((rect.width() - 820.0).max(40.0) / 2.0, 60.0));
-    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner).layout(egui::Layout::top_down(egui::Align::Min)));
-    let ui = &mut child;
-    ui.label(egui::RichText::new(tl!("Welcome to VectorCraft")).font(theme::semibold(26.0)).color(t.text));
-    ui.add_space(4.0);
-    ui.label(egui::RichText::new(tl!("Vector illustration — fast, open, scriptable.")).size(14.0).color(t.text_dim));
-    ui.add_space(22.0);
-    ui.horizontal(|ui| {
-        if widgets::primary_button(ui, tl!("New file")).clicked() {
-            app.run("file.newDialog", json!({})).ok();
-        }
-        ui.add_space(8.0);
-        if widgets::secondary_button(ui, tl!("Open")).clicked() {
-            app.run("file.open", json!({})).ok();
-        }
-    });
     recent(app, ui);
     ui.add_space(28.0);
     ui.label(egui::RichText::new(tl!("Quickly start a new file")).font(theme::semibold(14.0)).color(t.text));
@@ -2051,6 +2067,11 @@ fn home(app: &mut VectorcraftApp, ui: &mut Ui, rect: egui::Rect) {
         let cards: Vec<_> = presets.iter().filter_map(|name| vectorcraft_engine::cmd::newdoc::find(&app.session, name)).collect();
         for s in cards {
             if crate::dialogs::preset_card(ui, &s, false).clicked() {
+                // A document made here is Home's: it is saved to the cloud as it is edited, no file needed.
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    app.cloud_sync.new_from_home = true;
+                }
                 app.run("file.new", json!({ "preset": s.name })).ok();
             }
         }

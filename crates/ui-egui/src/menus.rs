@@ -53,9 +53,47 @@ use Item::Sep;
 /// UI-level commands: (id, label, shortcut, params doc).
 pub const UI_COMMANDS: &[(&str, &str, &str, &str)] = &[
     #[cfg(not(target_arch = "wasm32"))]
-    ("file.cloudProjects", "Cloud Projects…", "", "{} open personal cloud projects and connection settings"),
+    (
+        "file.cloudProjects",
+        "Cloud Projects…",
+        "",
+        "{} shows Home, the library of personal cloud projects (the connection settings are under its Account button)",
+    ),
     #[cfg(not(target_arch = "wasm32"))]
-    ("file.cloudOpen", "Open Cloud Project", "", "{version?: string, localToken?: string} open a verified downloaded revision or local checkpoint"),
+    (
+        "file.cloudOpen",
+        "Open Cloud Project",
+        "",
+        "{version?: string, localToken?: string} open a verified downloaded revision (its payload downloads first; a project already open is switched to) or local checkpoint → {pending: true} | {switched: true, uid}",
+    ),
+    #[cfg(not(target_arch = "wasm32"))]
+    (
+        "file.cloudList",
+        "List Cloud Projects",
+        "",
+        "{query?: title substring, filter?: all|recents|conflicts|offline|notUploaded, sort?: lastEdited|nameAsc|nameDesc} → {ready, loading, connected, status, label, total, projects: [{version, project, title, badge: notUploaded|downloading|conflict|onThisComputer|inCloud, badgeLabel, conflict: \"i/n\"|null, cached, pending, open, editedMs, hasPreview}], recents: [version], cacheBytes, cacheLimit} (what Home shows)",
+    ),
+    #[cfg(not(target_arch = "wasm32"))]
+    (
+        "file.cloudNew",
+        "New Cloud Project",
+        "",
+        "{…file.new params} makes a new untitled document as Home's New does: tracked by cloud autosave at once, no file path, never written outside the app's private folders",
+    ),
+    #[cfg(not(target_arch = "wasm32"))]
+    (
+        "file.cloudRename",
+        "Rename Cloud Project",
+        "",
+        "{version: string, title: string} renames the project of a Home card (its open document, else a new revision of the cached project); title: 1-256 bytes, no control characters",
+    ),
+    #[cfg(not(target_arch = "wasm32"))]
+    (
+        "file.cloudSaveCopy",
+        "Save a Copy of Cloud Project…",
+        "",
+        "{version: string, path?: string} writes the project of a Home card to a .vectorcraft file you pick (path: no dialog); downloads its payload first when needed",
+    ),
     (
         "app.language",
         "Interface Language",
@@ -966,6 +1004,10 @@ pub fn run_ui_command(app: &mut VectorcraftApp, id: &str, p: &Value) -> Option<R
     {
         return Some(r);
     }
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(r) = crate::cloud_home::command(app, id, p) {
+        return Some(r);
+    }
     let s = |k: &str| p.get(k).and_then(Value::as_str).map(str::to_string);
     let flag = |b: &mut bool| {
         *b = !*b;
@@ -974,11 +1016,11 @@ pub fn run_ui_command(app: &mut VectorcraftApp, id: &str, p: &Value) -> Option<R
     let r = match id {
         #[cfg(not(target_arch = "wasm32"))]
         "file.cloudProjects" => {
-            app.cloud_sync.visible = true;
+            app.ui.home = Some(home_key(app));
             Ok(Value::Null)
         }
         #[cfg(not(target_arch = "wasm32"))]
-        "file.cloudOpen" => crate::cloud_sync::open_command(&mut app.cloud_sync, p),
+        "file.cloudOpen" => crate::cloud_sync::open_command(app, p),
         "file.newDialog" => {
             crate::dialogs::open_new_document(app);
             Ok(Value::Null)
@@ -2098,6 +2140,8 @@ pub fn menu_tree_named(english_names: bool) -> Vec<(&'static str, Vec<Item>)> {
                 c("New…", "file.newDialog"),
                 c("New from Template…", "file.newFromTemplate"),
                 c("Open…", "file.open"),
+                #[cfg(not(target_arch = "wasm32"))]
+                c("Home", "app.home"),
                 #[cfg(not(target_arch = "wasm32"))]
                 c("Cloud Projects…", "file.cloudProjects"),
                 sub("Open Recent Files", {

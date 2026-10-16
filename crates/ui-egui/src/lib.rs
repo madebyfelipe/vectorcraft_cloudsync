@@ -19,6 +19,12 @@ pub mod canvas;
 pub mod chrome;
 mod clipboard_probe;
 #[cfg(not(target_arch = "wasm32"))]
+pub mod cloud_home;
+#[cfg(not(target_arch = "wasm32"))]
+mod cloud_home_ui;
+#[cfg(not(target_arch = "wasm32"))]
+mod cloud_preview;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod cloud_sync;
 pub mod community;
 pub mod control;
